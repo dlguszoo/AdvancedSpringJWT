@@ -1,6 +1,8 @@
 package com.example.advancedspringjwt.jwt;
 
 import com.example.advancedspringjwt.dto.CustomUserDetails;
+import com.example.advancedspringjwt.entity.RefreshEntity;
+import com.example.advancedspringjwt.repository.RefreshRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +16,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.util.Collection;
+import java.util.Date;
 import java.util.Iterator;
 
 public class LoginFilter extends UsernamePasswordAuthenticationFilter {
@@ -21,10 +24,13 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
     private final AuthenticationManager authenticationManager;
     private final JWTUtil jwtUtil;
 
-    public LoginFilter(AuthenticationManager authenticationManager, JWTUtil jwtUtil) {
+    private final RefreshRepository refreshRepository;
+
+    public LoginFilter(AuthenticationManager authenticationManager, JWTUtil jwtUtil, RefreshRepository refreshRepository) {
 
         this.authenticationManager = authenticationManager;
         this.jwtUtil = jwtUtil;
+        this.refreshRepository =refreshRepository;
     }
     @Override
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
@@ -57,10 +63,26 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         String access = jwtUtil.createJwt("access", username, role, 600000L); //Access토큰은 생명주기가 짧음 (10분)
         String refresh = jwtUtil.createJwt("refresh", username, role, 86400000L); //Refresh토큰은 생명주기가 긺 (24시간)
 
+        //Refresh토큰 저장
+        addRefreshEntity(username, refresh, 86400000L);
+
         //응답 설정 (응답은 response에 넣어줌)
         response.setHeader("access", access); //Access 토큰은 응답 헤더에 넣어줌
         response.addCookie(createCookie("refresh", refresh)); //Refresh 토큰은 응답 cookie에 넣어줌
         response.setStatus(HttpStatus.OK.value()); //응답 상세코드 설정
+    }
+
+    //Refresh토큰을 DB에 저장하는 메소드
+    private void addRefreshEntity(String username, String refresh, Long expiredMs) {
+
+        Date date = new Date(System.currentTimeMillis() + expiredMs); //만료일자 만듦
+
+        RefreshEntity refreshEntity = new RefreshEntity(); //Entity만들어서
+        refreshEntity.setUsername(username);
+        refreshEntity.setRefresh(refresh);
+        refreshEntity.setExpiration(date.toString());
+
+        refreshRepository.save(refreshEntity); //저장
     }
 
     //쿠키 생성 메소드
