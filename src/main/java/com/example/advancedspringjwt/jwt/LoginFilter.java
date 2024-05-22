@@ -2,8 +2,10 @@ package com.example.advancedspringjwt.jwt;
 
 import com.example.advancedspringjwt.dto.CustomUserDetails;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -37,24 +39,43 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         return authenticationManager.authenticate(authToken);
     }
 
-    //로그인 성공시 실행하는 메소드 (여기서 JWT를 발급하면 됨)
+    //로그인 성공시 실행하는 메소드 (여기서 2개의 토큰을 발급하면 됨)
     @Override
     protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) {
 
-        //UserDetailsS
-        CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
+        //유저 정보를 authentication에서 꺼내옴
+        //username
+        String username = authentication.getName();
 
-        String username = customUserDetails.getUsername();
-
+        //role
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
         Iterator<? extends GrantedAuthority> iterator = authorities.iterator();
         GrantedAuthority auth = iterator.next();
-
         String role = auth.getAuthority();
 
-        String token = jwtUtil.createJwt(username, role, 60*60*10L);
+        //토큰 생성
+        String access = jwtUtil.createJwt("access", username, role, 600000L); //Access토큰은 생명주기가 짧음 (10분)
+        String refresh = jwtUtil.createJwt("refresh", username, role, 86400000L); //Refresh토큰은 생명주기가 긺 (24시간)
 
-        response.addHeader("Authorization", "Bearer " + token);
+        //응답 설정 (응답은 response에 넣어줌)
+        response.setHeader("access", access); //Access 토큰은 응답 헤더에 넣어줌
+        response.addCookie(createCookie("refresh", refresh)); //Refresh 토큰은 응답 cookie에 넣어줌
+        response.setStatus(HttpStatus.OK.value()); //응답 상세코드 설정
+    }
+
+    //쿠키 생성 메소드
+    private Cookie createCookie(String key, String value) {
+
+        Cookie cookie = new Cookie(key, value);
+        cookie.setMaxAge(24*60*60); //cookie가 살아있을 시간
+
+        //cookie에 대해서 https통신에서만 사용할 수 있음
+        //cookie.setSecure(true); //local 환경은 https가 아니기 때문에 주석처리
+
+        //cookie.setPath("/"); //cookie가 보일 위치: 전역
+        cookie.setHttpOnly(true); //JavaScript가 해당 쿠키를 가져가지 못하게 함 (접근하지 못하게 함)
+
+        return cookie;
     }
 
     //로그인 실패시 실행하는 메소드
